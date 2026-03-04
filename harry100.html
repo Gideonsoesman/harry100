@@ -758,6 +758,13 @@ function initFirebase() {
               const rem = remote.find(r => r.id === local.id);
               return rem ? {...local, ...rem} : local;
             });
+          } else if (key === 'committees') {
+            // Firebase converts nested arrays to objects — restore members as arrays
+            const raw = Array.isArray(val) ? val : Object.values(val);
+            D.committees = raw.map(c => ({
+              ...c,
+              members: c.members ? (Array.isArray(c.members) ? c.members : Object.values(c.members)) : []
+            }));
           } else {
             D[key] = Array.isArray(val) ? val : Object.values(val);
           }
@@ -1393,7 +1400,8 @@ function renderComm() {
       </div>
       <div style="font-weight:700;font-size:13px;margin-bottom:8px">Members (${comm.members.length})</div>
       <div class="member-grid">${D.family.map(p => {
-        const on = comm.members.includes(p.id);
+        const members = Array.isArray(comm.members) ? comm.members : Object.values(comm.members || {});
+        const on = members.includes(p.id);
         const av = p.photo ? `<img src="${p.photo}"/>` : '👤';
         return `<div class="member-item${on?' on':''}" onclick="toggleMember('${p.id}')">
           <div class="member-avatar">${av}</div>
@@ -1404,8 +1412,13 @@ function renderComm() {
 }
 function setComm(id) { activeCommId = id; renderComm(); }
 function toggleMember(pid) {
-  D.committees = D.committees.map(c => c.id !== activeCommId ? c : {
-    ...c, members: c.members.includes(pid) ? c.members.filter(m=>m!==pid) : [...c.members, pid]
+  D.committees = D.committees.map(c => {
+    if (c.id !== activeCommId) return c;
+    const members = Array.isArray(c.members) ? c.members : Object.values(c.members || {});
+    return {
+      ...c,
+      members: members.includes(pid) ? members.filter(m=>m!==pid) : [...members, pid]
+    };
   });
   persist('committees'); renderComm();
 }
