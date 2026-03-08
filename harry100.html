@@ -720,13 +720,41 @@ const FB='https://harry-100---aug-2026-default-rtdb.europe-west1.firebasedatabas
 function init(){
   loadState();
   autoMigrate();
-  // Load hero photos from Firebase if missing
-  if(!S.villaPhoto||!S.harryPhoto){
-    fetch(FB+'.json?shallow=true').then(r=>r.json()).then(keys=>{
-      if(!S.villaPhoto&&keys.heroVilla)fetch(FB+'/heroVilla.json').then(r=>r.json()).then(d=>{if(d){S.villaPhoto=d;save();refreshHero('villa')}}).catch(()=>{});
-      if(!S.harryPhoto&&keys.heroHarry)fetch(FB+'/heroHarry.json').then(r=>r.json()).then(d=>{if(d){S.harryPhoto=d;save();refreshHero('harry')}}).catch(()=>{});
-    }).catch(()=>{});
+  // Bootstrap from Firebase if this is a fresh device (no people)
+  if(!S.people.length){
+    // Show loading overlay
+    const ld=document.createElement('div');ld.id='fb-loading';ld.style.cssText='position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;z-index:999';ld.innerHTML='<div style="font-size:2.5rem">🔄</div><div style="font-weight:700;color:var(--blue);font-size:1rem">Loading family data...</div>';document.body.appendChild(ld);
+    fetch(FB+'.json').then(r=>r.json()).then(fb=>{
+      if(!fb){document.getElementById('fb-loading')?.remove();renderAll();return;}
+      // People
+      if(fb.family&&Array.isArray(fb.family)){
+        S.people=fb.family.map(p=>({id:p.id,name:p.name,cat:p.category||p.cat||'adult',branch:p.branch||'',photo:null}));
+        fb.family.forEach(p=>{if(p.photo)setPersonPhoto(p.id,p.photo);});
+        S.people.forEach(p=>{p.photo=getPersonPhoto(p.id)?'__local__':null;});
+      }
+      // Committees
+      if(fb.committees&&Array.isArray(fb.committees)){
+        S.committees=fb.committees.map(c=>({id:c.id,name:c.name,desc:c.description||c.desc||'',members:c.members||[]}));
+      }
+      // Expenses
+      if(fb.expenses){
+        const arr=Array.isArray(fb.expenses)?fb.expenses:Object.values(fb.expenses);
+        S.expenses=arr.map(e=>({id:e.id||uid(),desc:e.desc||e.description||'',amount:parseFloat(e.amount)||0,currency:e.currency||'EUR',cat:e.cat||e.category||'Other',paidBy:e.paidBy||'',splitWith:e.splitWith||[],reimbursed:e.reimbursed||false,receipt:null,ts:e.ts||Date.now()}));
+      }
+      // Hero photos - memory only
+      if(fb.heroVilla)S.villaPhoto=fb.heroVilla;
+      if(fb.heroHarry)S.harryPhoto=fb.heroHarry;
+      S.migrated=true;
+      save();
+      document.getElementById('fb-loading')?.remove();
+      renderAll();updateBadge();refreshPhFilter();
+      if(!S.currentUser&&S.people.length>0)setTimeout(openWhoModal,600);
+    }).catch(()=>{document.getElementById('fb-loading')?.remove();renderAll();updateBadge();refreshPhFilter();});
+    return;
   }
+  // Existing device - just load hero photos from Firebase (too big for localStorage)
+  if(!S.villaPhoto)fetch(FB+'/heroVilla.json').then(r=>r.json()).then(d=>{if(d){S.villaPhoto=d;refreshHero('villa')}}).catch(()=>{});
+  if(!S.harryPhoto)fetch(FB+'/heroHarry.json').then(r=>r.json()).then(d=>{if(d){S.harryPhoto=d;refreshHero('harry')}}).catch(()=>{});
   // Load expenses from Firebase if missing
   if(!S.expenses.length){
     fetch(FB+'/expenses.json').then(r=>r.json()).then(d=>{
@@ -737,7 +765,7 @@ function init(){
       save();if(activeTab==='expenses')renderExpenses();
     }).catch(()=>{});
   }
-  renderHome();
+  renderAll();
   updateBadge();
   refreshPhFilter();
   if(!S.currentUser&&S.people.length>0)setTimeout(openWhoModal,600);
